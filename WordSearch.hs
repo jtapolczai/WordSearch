@@ -159,7 +159,8 @@ main = do
                    putStrLn "Searching solutions..."
                    let sols = searchManyWords width lg words lengths
                        showSolution n = putStrLn . intercalate " - " . map (uncurry $ flip mkUtfWord) . view solutions $ n
-                       showDebug = putStrLn . show . map show . view solutions
+                       --showDebug = putStrLn . show . map show . view solutions
+                       showDebug _ = return ()
                    mapM_ (\x -> showSolution x >> showDebug x) sols
                    --mapM_ putStrLn $ nub $ map (mkUtfWord lg . view solution) $ searchWords lg words
                    putStrLn "--------------------"
