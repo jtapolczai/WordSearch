@@ -34,7 +34,9 @@ mkLetterGraph :: Int -> [Char] -> LetterGraph
 mkLetterGraph width cs = M.mapWithKey mkConns initMap
    where
       initMap :: LetterGraph
-      initMap = M.fromList $ snd $ foldl' (\(i,xs) c -> (i+1,(i,(c,[])):xs)) (0,[]) cs
+      initMap = M.fromList $ snd $ foldl' (\acc c -> if c == ' ' then acc else addLetter acc c) (0,[]) cs
+
+      addLetter (i,xs) c = (i+1,(i,(c,[])):xs)
 
       mkConns :: Int -> (Char, [Int]) -> (Char, [Int])
       mkConns k = second $ const $ filter (flip M.member initMap) $ line width (-1) k ++ line width 0 k ++ line width 1 k
@@ -89,7 +91,7 @@ main = do
    putStrLn "Enter field width: "
    width <- read <$> getLine
    whileJust_
-      (do putStrLn "Enter letter (no separators, no newlines) or :exit to quit: "
+      (do putStrLn "Enter letter (no separators, no newlines, spaces for empty fields) or :exit to quit: "
           line <- getLine
           return $ if line == ":exit" then Nothing else Just line)
       (\line -> do let lg = mkLetterGraph width line
