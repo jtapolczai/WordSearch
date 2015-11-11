@@ -19,6 +19,8 @@ import Data.List
 import Data.Maybe
 import Search
 
+import Debug.Trace
+
 type LetterGraph = M.Map Int (Char, [Int])
 type WordList = T.Trie ()
 data Stop = Stop | Continue deriving (Eq, Show, Ord, Enum, Bounded, Read)
@@ -34,9 +36,10 @@ mkLetterGraph :: Int -> [Char] -> LetterGraph
 mkLetterGraph width cs = M.mapWithKey mkConns initMap
    where
       initMap :: LetterGraph
-      initMap = M.fromList $ snd $ foldl' (\acc c -> if c == ' ' then acc else addLetter acc c) (0,[]) cs
+      initMap = M.fromList $ snd $ foldl' (\acc c -> if c == ' ' then skipLetter acc else addLetter acc c) (0,[]) cs
 
       addLetter (i,xs) c = (i+1,(i,(c,[])):xs)
+      skipLetter (i,xs) = (i+1,xs)
 
       mkConns :: Int -> (Char, [Int]) -> (Char, [Int])
       mkConns k = second $ const $ filter (flip M.member initMap) $ line width (-1) k ++ line width 0 k ++ line width 1 k
@@ -95,6 +98,7 @@ main = do
           line <- getLine
           return $ if line == ":exit" then Nothing else Just line)
       (\line -> do let lg = mkLetterGraph width line
+                   --traceM (show lg)
                    putStrLn "Searching solutions..."
                    mapM_ putStrLn $ nub $ map (mkUtfWord lg . view solution) $ searchWords lg words
                    putStrLn "--------------------"
