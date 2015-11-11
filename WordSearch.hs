@@ -14,6 +14,7 @@ import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.IntMultiSet as IMS
+import qualified Data.IntSet as IS
 import Control.Monad.Loops
 import Control.Lens
 import Data.List.Split (splitOn)
@@ -39,7 +40,7 @@ data OneWordNode = OneWordNode {
 
 data MultiWordNode = MultiWordNode {
    _multiWordNodeGraph :: LetterGraph,
-   _multiWordNodeSolutions :: [Solution],
+   _multiWordNodeSolutions :: [(Solution, LetterGraph)],
    _multiWordNodeRemainingWords :: IMS.IntMultiSet
 }
    deriving (Eq, Show)
@@ -105,16 +106,36 @@ searchWords lg words = bfs (oneMoreLetter lg words) isGoal (OneWordNode [] Conti
 -- |Removes the letters of the solution from a letter graph. The
 --  remaining letters "fall down" to take the place of the removed ones.
 sinkField :: FieldWidth -> Solution -> LetterGraph -> LetterGraph
-sinkField width inds = mkLetterGraph width . map (fst . snd) . M.toList . flip (foldl' setToSpace) inds
+sinkField width inds lg = mkLetterGraph width . map snd . M.toList $ filledLg
    where
-      setToSpace = flip $ M.adjust (const (' ',[]))
+      height = (+1) . (`div` width) . fst . M.findMax $ lg
+
+      indsS = IS.fromList inds
+
+      -- we create a new, empty board of fields (filled with spaces).
+      -- then we go through the old letter graph and insert its letters into the
+      -- correct (=sunken) positions of the new graph.
+      emptyLg = M.fromList [(i,' ') | i <- [0.. (width*height - 1)]]
+
+      filledLg :: M.Map Int Char
+      filledLg = M.foldlWithKey' (\m k (c,_) -> if IS.member k indsS then m else M.insert (sink k) c m) emptyLg lg 
+
+      -- move a key down by however many fields below it are empty
+      sink k = k + width * numEmptyBelow k
+
+      -- the number of fields directly below a field which are empty.
+      -- "empty" means "contained in the given solution", since those are supposed to
+      -- be deleted.
+      numEmptyBelow k = foldl' (\num j -> if (k `rem` width) == (j `rem` width) && j > k then num+1 else num) 0 inds
 
 oneMoreWord :: FieldWidth -> WordList -> SuccF MultiWordNode
 oneMoreWord width words (MultiWordNode lg sols remainingWords) = map mkSucc solutions
    where
       solutions = filter (flip IMS.member remainingWords . length) $ map (view solution) $ searchWords lg words
 
-      mkSucc inds = MultiWordNode (sinkField width inds lg) (sols ++ [inds]) (IMS.delete (length inds) remainingWords)
+      mkSucc inds = MultiWordNode (sinkField width inds lg) (sols ++ [(inds, lg)]) (IMS.delete (length inds) remainingWords)
+
+      -- trace' x = traceShow x x
 
 isMultiWordGoal :: GoalF MultiWordNode
 isMultiWordGoal = IMS.null . view remainingWords
@@ -137,8 +158,9 @@ main = do
                    lengths <- map read . splitOn "," <$> getLine
                    putStrLn "Searching solutions..."
                    let sols = searchManyWords width lg words lengths
-                       showSolution = putStrLn . intercalate " - " . map (mkUtfWord lg) . view solutions
-                   mapM_ showSolution sols
+                       showSolution n = putStrLn . intercalate " - " . map (uncurry $ flip mkUtfWord) . view solutions $ n
+                       showDebug = putStrLn . show . map show . view solutions
+                   mapM_ (\x -> showSolution x >> showDebug x) sols
                    --mapM_ putStrLn $ nub $ map (mkUtfWord lg . view solution) $ searchWords lg words
                    putStrLn "--------------------"
                    putStrLn "done!")
