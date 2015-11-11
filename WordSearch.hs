@@ -21,18 +21,21 @@ import Search
 
 import Debug.Trace
 
+type FieldWidth = Int
+type Solution = [Int]
+
 type LetterGraph = M.Map Int (Char, [Int])
 type WordList = T.Trie ()
 data Stop = Stop | Continue deriving (Eq, Show, Ord, Enum, Bounded, Read)
 
 data Node = Node{
-   _nodeSolution::[Int],
+   _nodeSolution::Solution,
    _nodeStop::Stop}
    deriving (Eq, Show)
 
 makeFields ''Node
 
-mkLetterGraph :: Int -> [Char] -> LetterGraph
+mkLetterGraph :: FieldWidth -> [Char] -> LetterGraph
 mkLetterGraph width cs = M.mapWithKey mkConns initMap
    where
       initMap :: LetterGraph
@@ -44,7 +47,7 @@ mkLetterGraph width cs = M.mapWithKey mkConns initMap
       mkConns :: Int -> (Char, [Int]) -> (Char, [Int])
       mkConns k = second $ const $ filter (flip M.member initMap) $ line width (-1) k ++ line width 0 k ++ line width 1 k
 
-line :: Int -> Int -> Int -> [Int]
+line :: FieldWidth -> Int -> Int -> [Int]
 line width offset k = map (+ (width * offset)) $
    (if k `rem` width == 0   then [] else [k-1]) ++
    (if offset == 0          then [] else [k]) ++
@@ -53,7 +56,7 @@ line width offset k = map (+ (width * offset)) $
 readWordList :: FilePath -> IO WordList
 readWordList fp = T.fromList . map ((,()) . mkBS) . lines <$> readFile fp
 
-mkWord :: LetterGraph -> [Int] -> B.ByteString
+mkWord :: LetterGraph -> Solution -> B.ByteString
 mkWord lg = LB.toStrict . BB.toLazyByteString . BB.stringUtf8 . mkUtfWord lg
 
 mkUtfWord :: LetterGraph -> [Int] -> String
@@ -77,7 +80,7 @@ oneMoreLetter lg words (Node is _) = goalNode ++ (filter validPrefix $ map mkNod
       -- add this node again as a child with goal=true if it is a valid word
       goalNode = filter (validWord lg words . view solution) [Node is Stop]
 
-validWord :: LetterGraph -> WordList -> [Int]-> Bool
+validWord :: LetterGraph -> WordList -> Solution -> Bool
 validWord lg words inds = (T.member (mkWord lg inds) words) && length inds > 2
 
 isGoal :: Node -> Bool
@@ -86,6 +89,14 @@ isGoal _ = False
 
 searchWords :: LetterGraph -> WordList -> [Node]
 searchWords lg words = bfs (oneMoreLetter lg words) isGoal (Node [] Continue)
+
+-- |Removes the letters of the solution from a letter graph. The
+--  remaining letters "fall down" to take the place of the removed ones.
+sinkField :: FieldWidth -> Solution -> LetterGraph -> LetterGraph
+sinkField width inds = mkLetterGraph width . map (fst . snd) . M.toList . flip (foldl' setToSpace) inds
+   where
+      setToSpace = flip $ M.adjust (const (' ',[]))
+
 
 main :: IO ()
 main = do
