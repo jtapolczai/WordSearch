@@ -1,4 +1,9 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 module WordSearch where
 
@@ -9,6 +14,7 @@ import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 import Control.Monad.Loops
+import Control.Lens
 import Data.List
 import Data.Maybe
 import Search
@@ -17,7 +23,12 @@ type LetterGraph = M.Map Int (Char, [Int])
 type WordList = T.Trie ()
 data Stop = Stop | Continue deriving (Eq, Show, Ord, Enum, Bounded, Read)
 
-data Node = Node [Int] Stop deriving (Eq, Show)
+data Node = Node{
+   _nodeSolution::[Int],
+   _nodeStop::Stop}
+   deriving (Eq, Show)
+
+makeFields ''Node
 
 mkLetterGraph :: Int -> [Char] -> LetterGraph
 mkLetterGraph width cs = M.mapWithKey mkConns initMap
@@ -37,11 +48,11 @@ line width offset k = map (+ (width * offset)) $
 readWordList :: FilePath -> IO WordList
 readWordList fp = T.fromList . map ((,()) . mkBS) . lines <$> readFile fp
 
-mkWord :: LetterGraph -> Node -> B.ByteString
+mkWord :: LetterGraph -> [Int] -> B.ByteString
 mkWord lg = LB.toStrict . BB.toLazyByteString . BB.stringUtf8 . mkUtfWord lg
 
-mkUtfWord :: LetterGraph -> Node -> String
-mkUtfWord lg (Node inds _) = map (\i -> fst $ fromMaybe (error $ "null in mkUtfWord: " ++ show inds) $ M.lookup i lg) . reverse $ inds
+mkUtfWord :: LetterGraph -> [Int] -> String
+mkUtfWord lg inds = map (\i -> fst $ fromMaybe (error $ "null in mkUtfWord: " ++ show inds) $ M.lookup i lg) . reverse $ inds
 
 mkBS :: String -> B.ByteString
 mkBS = LB.toStrict . BB.toLazyByteString . BB.stringUtf8
@@ -56,13 +67,13 @@ oneMoreLetter lg words (Node is _) = goalNode ++ (filter validPrefix $ map mkNod
       mkNode i = Node (i:is) Continue
 
       validPrefix :: Node -> Bool
-      validPrefix n = not . T.null $ T.submap (mkWord lg n) words
+      validPrefix n = not . T.null $ T.submap (mkWord lg $ view solution n) words
 
       -- add this node again as a child with goal=true if it is a valid word
-      goalNode = filter (validWord lg words) [Node is Stop]
+      goalNode = filter (validWord lg words . view solution) [Node is Stop]
 
-validWord :: LetterGraph -> WordList -> Node -> Bool
-validWord lg words n@(Node inds _) = (T.member (mkWord lg n) words) && length inds > 2
+validWord :: LetterGraph -> WordList -> [Int]-> Bool
+validWord lg words inds = (T.member (mkWord lg inds) words) && length inds > 2
 
 isGoal :: Node -> Bool
 isGoal (Node _ Stop) = True
@@ -83,6 +94,6 @@ main = do
           return $ if line == ":exit" then Nothing else Just line)
       (\line -> do let lg = mkLetterGraph width line
                    putStrLn "Searching solutions..."
-                   mapM_ putStrLn $ nub $ map (mkUtfWord lg) $ searchWords lg words
+                   mapM_ putStrLn $ nub $ map (mkUtfWord lg . view solution) $ searchWords lg words
                    putStrLn "--------------------"
                    putStrLn "done!")
